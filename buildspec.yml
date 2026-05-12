@@ -1,0 +1,42 @@
+version: 0.2
+
+env:
+  variables:
+    AWS_REGION: "ap-south-1"
+    AWS_ACCOUNT_ID: "764720836686"
+    ECR_REPO_NAME: "project/practice"
+
+phases:
+  install:
+    runtime-versions:
+      java: corretto17
+    commands:
+      - echo "Maven install kar rahe hain..."
+      - apt-get install -y maven
+
+  pre_build:
+    commands:
+      - echo "ECR login ho raha hai..."
+      - ECR_URI=764720836686.dkr.ecr.ap-south-1.amazonaws.com/project/practice
+      - aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 764720836686.dkr.ecr.ap-south-1.amazonaws.com
+      - IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+
+  build:
+    commands:
+      - echo "Maven WAR build ho rahi hai..."
+      - mvn clean package -DskipTests
+      - echo "Docker image build ho rahi hai..."
+      - docker build -t $ECR_REPO_NAME:$IMAGE_TAG .
+      - docker tag $ECR_REPO_NAME:$IMAGE_TAG $ECR_URI:$IMAGE_TAG
+      - docker tag $ECR_REPO_NAME:$IMAGE_TAG $ECR_URI:latest
+
+  post_build:
+    commands:
+      - echo "ECR mein push ho raha hai..."
+      - docker push $ECR_URI:$IMAGE_TAG
+      - docker push $ECR_URI:latest
+      - printf '[{"name":"samplejavaapp","imageUri":"%s"}]' $ECR_URI:$IMAGE_TAG > imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
